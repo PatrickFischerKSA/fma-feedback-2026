@@ -1,3 +1,6 @@
+const pagesOrigin = 'https://patrickfischerksa.github.io';
+const publicApiPaths = new Set(['/api/feedback', '/api/kommentare', '/api/likes']);
+
 const headers = {
   'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff',
@@ -79,7 +82,7 @@ async function route(request, env) {
   }
   if (request.method !== 'POST') return json({error:'Methode nicht verfügbar.'},405);
   const origin = request.headers.get('Origin');
-  if (origin && origin !== url.origin) return json({error:'Ungültiger Ursprung.'},403);
+  if (origin && origin !== url.origin && !(origin === pagesOrigin && publicApiPaths.has(path))) return json({error:'Ungültiger Ursprung.'},403);
   const data = await readBody(request);
   if (!data) return invalid('Ungültige Anfrage.');
   if (settings) {
@@ -140,7 +143,21 @@ async function route(request, env) {
 
 export default {
   async fetch(request, env) {
-    try { return await route(request, env); }
-    catch { return json({error:'Die Anfrage konnte nicht verarbeitet werden.'},500); }
+    const path = new URL(request.url).pathname;
+    const fromPages = request.headers.get('Origin') === pagesOrigin && publicApiPaths.has(path);
+    let response;
+    if (fromPages && request.method === 'OPTIONS') {
+      response = new Response(null, {status:204, headers:{
+        'Access-Control-Allow-Methods':'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers':'Content-Type',
+        'Access-Control-Max-Age':'600'
+      }});
+    } else {
+      try { response = await route(request, env); }
+      catch { response = json({error:'Die Anfrage konnte nicht verarbeitet werden.'},500); }
+    }
+    if (publicApiPaths.has(path)) response.headers.append('Vary','Origin');
+    if (fromPages) response.headers.set('Access-Control-Allow-Origin',pagesOrigin);
+    return response;
   }
 };
