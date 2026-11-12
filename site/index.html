@@ -48,7 +48,7 @@ const schedule = slots.map(([time, count]) => {
 
 const pagesOrigin = 'https://patrickfischerksa.github.io';
 const backend = location.origin === pagesOrigin
-  ? 'https://fma-feedback-2026.patrickoliverfischer.chatgpt.site' : '';
+  ? 'https://fma-feedback-2026-ksa.patrick-fischer.workers.dev' : '';
 const byId = id => document.getElementById(id);
 if (backend) document.querySelector('a[href="/lehrer"]').href = backend + '/lehrer';
 const form = byId('feedback');
