@@ -16,6 +16,8 @@ body{margin:0 auto;max-width:50rem;padding:1.5rem;background:#f2f5ed;color:#172d
 <button id="refresh">Pool aktualisieren</button>
 <p id="status" role="status"></p>
 <section id="pool" aria-label="Offene Kommentare"></section>
+<h2>Veröffentlichte Kommentare</h2>
+<section id="published" aria-label="Veröffentlichte Kommentare"></section>
 </main>
 <script type="module">
 import {titles,prompts} from './feedback.mjs';
@@ -47,7 +49,7 @@ async function changeMode(open) {
 }
 start.addEventListener('click', () => changeMode(true));
 close.addEventListener('click', () => changeMode(false));
-async function load() {
+async function loadPending() {
   const response = await fetch('/api/lehrer');
   if (!response.ok) throw new Error('Der Pool konnte nicht geladen werden.');
   const rows = await response.json();
@@ -83,6 +85,72 @@ async function load() {
     }
     pool.append(card);
   }
+}
+const published = document.querySelector('#published');
+async function loadPublished() {
+  const response = await fetch('/api/lehrer/publiziert');
+  if (!response.ok) throw new Error('Veröffentlichte Kommentare konnten nicht geladen werden.');
+  const rows = await response.json();
+  published.replaceChildren();
+  if (!rows.length) published.textContent = 'Keine veröffentlichten Kommentare.';
+  for (const row of rows) {
+    const card = document.createElement('article');
+    const title = document.createElement('h3');
+    title.textContent = titles[row.talk - 1] + ' · ' + row.initials;
+    const preview = document.createElement('p');
+    preview.textContent = prompts[row.prompt] + (row.detail ? ' ' + row.detail : '');
+    const edit = document.createElement('button');
+    edit.textContent = 'Bearbeiten';
+    const withdraw = document.createElement('button');
+    withdraw.textContent = 'Zurückziehen';
+    const form = document.createElement('form');
+    form.hidden = true;
+    const promptLabel = document.createElement('label');
+    const prompt = document.createElement('select');
+    promptLabel.textContent = 'Rückmeldung ';
+    prompts.forEach((value, index) => prompt.add(new Option(value,index)));
+    prompt.value = row.prompt;
+    promptLabel.append(prompt);
+    const detailLabel = document.createElement('label');
+    const detail = document.createElement('textarea');
+    detailLabel.textContent = ' Ergänzung ';
+    detail.value = row.detail;
+    detail.maxLength = 140;
+    detailLabel.append(detail);
+    const save = document.createElement('button');
+    save.textContent = 'Änderungen speichern';
+    form.append(promptLabel,detailLabel,save);
+    edit.addEventListener('click', () => {
+      form.hidden = !form.hidden;
+      if (!form.hidden) prompt.focus();
+    });
+    async function apply(action, values = {}) {
+      for (const control of [edit,withdraw,save]) control.disabled = true;
+      try {
+        const response = await fetch('/api/lehrer/publiziert',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({id:row.id,action,...values})
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+        status.textContent = action === 'withdraw' ? 'Kommentar zurückgezogen.' : 'Änderungen veröffentlicht.';
+        await load();
+      } catch (error) {
+        status.textContent = error.message;
+        for (const control of [edit,withdraw,save]) control.disabled = false;
+      }
+    }
+    withdraw.addEventListener('click', () => apply('withdraw'));
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      apply('edit',{prompt:Number(prompt.value),detail:detail.value});
+    });
+    card.append(title,preview,edit,withdraw,form);
+    published.append(card);
+  }
+}
+function load() {
+  return Promise.all([loadPending(),loadPublished()]);
 }
 function refresh() {
   changeMode();

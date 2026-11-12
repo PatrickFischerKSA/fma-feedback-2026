@@ -43,7 +43,7 @@ async function readBody(request) {
 async function route(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
-  const teacher = ['/lehrer','/api/lehrer','/api/lehrer/kommentare'].includes(path);
+  const teacher = ['/lehrer','/api/lehrer','/api/lehrer/kommentare','/api/lehrer/publiziert'].includes(path);
   if (teacher && !await isTeacher(request, env.TEACHER_PASSWORD)) {
     return new Response('Lehrerbereich', {status:401, headers:{
       ...headers, 'WWW-Authenticate':'Basic realm="FMA Lehrperson", charset="UTF-8"'
@@ -56,7 +56,7 @@ async function route(request, env) {
       headers:{...headers, 'Content-Type':image ? type : type+'; charset=utf-8'}
     });
   }
-  if (!['/api/feedback','/api/lehrer','/api/kommentare','/api/lehrer/kommentare','/api/likes'].includes(path)) return json({error:'Seite nicht gefunden.'},404);
+  if (!['/api/feedback','/api/lehrer','/api/kommentare','/api/lehrer/kommentare','/api/lehrer/publiziert','/api/likes'].includes(path)) return json({error:'Seite nicht gefunden.'},404);
   const db = env.DB;
   const settings = path === '/api/kommentare' || path === '/api/lehrer/kommentare';
   if (request.method === 'GET' && settings) {
@@ -74,7 +74,7 @@ async function route(request, env) {
   }
   if (request.method === 'GET') {
     const {results} = await db.prepare('SELECT id, initials, talk, prompt, detail FROM feedback WHERE state=? ORDER BY id')
-      .bind(teacher ? 'pending' : 'approved').all();
+      .bind(path === '/api/lehrer/publiziert' ? 'approved' : 'pending').all();
     return json(results);
   }
   if (request.method !== 'POST') return json({error:'Methode nicht verfügbar.'},405);
@@ -99,6 +99,23 @@ async function route(request, env) {
       FROM feedback LEFT JOIN comment_likes ON feedback_id=feedback.id
       WHERE feedback.id=? AND state='approved' GROUP BY feedback.id`).bind(data.id).first();
     return row ? json({likes:row.likes}) : json({error:'Kommentar nicht gefunden.'},404);
+  }
+  if (path === '/api/lehrer/publiziert') {
+    if (!Number.isSafeInteger(data.id) || data.id < 1) return invalid('Ungültiger Kommentar.');
+    let result;
+    if (data.action === 'withdraw') {
+      result = await db.prepare("UPDATE feedback SET state='pending' WHERE id=? AND state='approved'").bind(data.id).run();
+    } else if (data.action === 'edit' && inRange(data.prompt,prompts.length) &&
+               typeof data.detail === 'string' && data.detail.length <= 140) {
+      const detail = data.detail.trim();
+      const error = feedbackError(detail);
+      if (error) return json({error},422);
+      result = await db.prepare("UPDATE feedback SET prompt=?, detail=? WHERE id=? AND state='approved'")
+        .bind(data.prompt,detail,data.id).run();
+    } else {
+      return invalid('Ungültige Bearbeitung.');
+    }
+    return result.meta.changes ? json({ok:true}) : json({error:'Der Kommentar ist nicht mehr veröffentlicht.'},409);
   }
   if (teacher) {
     if (!Number.isSafeInteger(data.id) || !['approved','deleted'].includes(data.state)) return invalid('Ungültige Entscheidung.');

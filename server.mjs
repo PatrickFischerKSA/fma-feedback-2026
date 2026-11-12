@@ -80,18 +80,19 @@ createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   const path = req.url.split('?')[0];
-  if (['/lehrer','/api/lehrer','/api/lehrer/kommentare'].includes(path) && !authorized(req,res)) return;
+  if (['/lehrer','/api/lehrer','/api/lehrer/kommentare','/api/lehrer/publiziert'].includes(path) && !authorized(req,res)) return;
   try {
     if (req.method === 'GET' && assets.has(path)) {
       const [body,type] = assets.get(path);
       return res.writeHead(200,{'Content-Type':type.startsWith('image/') ? type : type+'; charset=utf-8'}).end(body);
     }
     if (path === '/api/feedback' && req.method === 'GET') return json(res,200,approved.all());
+    if (path === '/api/lehrer/publiziert' && req.method === 'GET') return json(res,200,list.all('approved'));
     if (path === '/api/lehrer' && req.method === 'GET') return json(res,200,list.all('pending'));
     if (req.method === 'GET' && ['/api/kommentare','/api/lehrer/kommentare'].includes(path)) {
       return json(res,200,{open:readMode.get()?.is_open === 1});
     }
-    if (req.method === 'POST' && ['/api/feedback','/api/lehrer','/api/lehrer/kommentare','/api/likes'].includes(path)) {
+    if (req.method === 'POST' && ['/api/feedback','/api/lehrer','/api/lehrer/kommentare','/api/lehrer/publiziert','/api/likes'].includes(path)) {
       const origin = req.headers.origin;
       if (origin && new URL(origin).host !== req.headers.host) return json(res,403,{error:'Ungültiger Ursprung.'});
       const data = await readJson(req);
@@ -107,6 +108,23 @@ createServer(async (req, res) => {
         addLike.run(data.voter,data.id);
         const row = likeCount.get(data.id);
         return row ? json(res,200,row) : json(res,404,{error:'Kommentar nicht gefunden.'});
+      }
+      if (path === '/api/lehrer/publiziert') {
+        if (!Number.isSafeInteger(data.id) || data.id < 1) return json(res,400, {error:'Ungültiger Kommentar.'});
+        let result;
+        if (data.action === 'withdraw') {
+          result = db.prepare("UPDATE feedback SET state='pending' WHERE id=? AND state='approved'").run(data.id);
+        } else if (data.action === 'edit' && inRange(data.prompt,prompts.length) &&
+                   typeof data.detail === 'string' && data.detail.length <= 140) {
+          const detail = data.detail.trim();
+          const error = feedbackError(detail);
+          if (error) return json(res,422,{error});
+          result = db.prepare("UPDATE feedback SET prompt=?, detail=? WHERE id=? AND state='approved'")
+            .run(data.prompt,detail,data.id);
+        } else {
+          return json(res,400, {error:'Ungültige Bearbeitung.'});
+        }
+        return result.changes ? json(res,200,{ok:true}) : json(res,409,{error:'Der Kommentar ist nicht mehr veröffentlicht.'});
       }
       if (path === '/api/lehrer') {
         if (!Number.isSafeInteger(data.id) || !['approved','deleted'].includes(data.state)) return json(res,400,{error:'Ungültige Entscheidung.'});
