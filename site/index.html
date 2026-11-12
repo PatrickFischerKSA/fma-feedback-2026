@@ -46,7 +46,11 @@ const schedule = slots.map(([time, count]) => {
   return { time, talks };
 });
 
+const pagesOrigin = 'https://patrickfischerksa.github.io';
+const backend = location.origin === pagesOrigin
+  ? 'https://fma-feedback-2026.patrickoliverfischer.chatgpt.site' : '';
 const byId = id => document.getElementById(id);
+if (backend) document.querySelector('a[href="/lehrer"]').href = backend + '/lehrer';
 const form = byId('feedback');
 const slot = byId('slot');
 const talk = byId('talk');
@@ -79,7 +83,7 @@ async function showBrochure() {
   const target = byId('entries');
   let entries;
   try {
-    const response = await fetch('/broschuere.json');
+    const response = await fetch('./broschuere.json');
     if (!response.ok) throw new Error();
     entries = await response.json();
   } catch {
@@ -88,7 +92,7 @@ async function showBrochure() {
   }
   let comments = null;
   try {
-    const response = await fetch('/api/feedback');
+    const response = await fetch(backend + '/api/feedback');
     if (response.ok) comments = await response.json();
   } catch {
     // Die Broschüre bleibt bei einer Störung der Kommentarabfrage lesbar.
@@ -101,7 +105,7 @@ async function showBrochure() {
       card.id = 'praesentation-' + id;
       const figure = document.createElement('figure');
       const image = document.createElement('img');
-      image.src = '/bilder/' + id + '.jpg';
+      image.src = './bilder/' + id + '.jpg';
       image.alt = 'Visualisierung zur Arbeit «' + title + '»';
       image.loading = 'lazy';
       figure.append(image);
@@ -127,7 +131,7 @@ async function showBrochure() {
               voter = crypto.randomUUID();
               localStorage.setItem('fma-voter', voter);
             }
-            const response = await fetch('/api/likes', {
+            const response = await fetch(backend + '/api/likes', {
               method:'POST', headers:{'Content-Type':'application/json'},
               body:JSON.stringify({id:row.id,voter})
             });
@@ -168,7 +172,7 @@ function applyStatus(open, message) {
 }
 async function refreshAvailability() {
   try {
-    const response = await fetch('/api/kommentare');
+    const response = await fetch(backend + '/api/kommentare');
     if (!response.ok) throw new Error();
     const {open} = await response.json();
     applyStatus(open === true, open ? '' : 'Die Kommentarfunktion ist geschlossen.');
@@ -191,7 +195,7 @@ form.addEventListener('submit', async event => {
   submitting = true;
   submitButton.disabled = true;
   try {
-    const response = await fetch('/api/feedback', {
+    const response = await fetch(backend + '/api/feedback', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({initials:byId('initials').value,talk:Number(talk.value),prompt:Number(prompt.value),detail:text})
     });
