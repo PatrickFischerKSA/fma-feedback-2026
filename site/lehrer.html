@@ -116,6 +116,9 @@ async function loadPublished() {
     detailLabel.textContent = ' Ergänzung ';
     detail.value = row.detail;
     detail.maxLength = 140;
+    detail.lang = 'de-CH';
+    detail.spellcheck = true;
+    detail.setAttribute('autocorrect', 'on');
     detailLabel.append(detail);
     const save = document.createElement('button');
     save.textContent = 'Änderungen speichern';
