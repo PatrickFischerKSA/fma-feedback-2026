@@ -43,7 +43,7 @@ async function readBody(request) {
 async function route(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
-  const teacher = path === '/lehrer' || path === '/api/lehrer';
+  const teacher = ['/lehrer','/api/lehrer','/api/lehrer/kommentare'].includes(path);
   if (teacher && !await isTeacher(request, env.TEACHER_PASSWORD)) {
     return new Response('Lehrerbereich', {status:401, headers:{
       ...headers, 'WWW-Authenticate':'Basic realm="FMA Lehrperson", charset="UTF-8"'
@@ -56,8 +56,22 @@ async function route(request, env) {
       headers:{...headers, 'Content-Type':image ? type : type+'; charset=utf-8'}
     });
   }
-  if (!['/api/feedback','/api/lehrer'].includes(path)) return json({error:'Seite nicht gefunden.'},404);
+  if (!['/api/feedback','/api/lehrer','/api/kommentare','/api/lehrer/kommentare','/api/likes'].includes(path)) return json({error:'Seite nicht gefunden.'},404);
   const db = env.DB;
+  const settings = path === '/api/kommentare' || path === '/api/lehrer/kommentare';
+  if (request.method === 'GET' && settings) {
+    const row = await db.prepare('SELECT is_open FROM comment_settings WHERE id=1').first();
+    return json({open:row?.is_open === 1});
+  }
+  if (request.method === 'GET' && path === '/api/likes') {
+    return json({error:'Methode nicht verfügbar.'},405);
+  }
+  if (request.method === 'GET' && path === '/api/feedback') {
+    const {results} = await db.prepare(`SELECT id, initials, talk, prompt, detail,
+      (SELECT count(*) FROM comment_likes WHERE feedback_id=feedback.id) AS likes
+      FROM feedback WHERE state='approved' ORDER BY id`).all();
+    return json(results);
+  }
   if (request.method === 'GET') {
     const {results} = await db.prepare('SELECT id, initials, talk, prompt, detail FROM feedback WHERE state=? ORDER BY id')
       .bind(teacher ? 'pending' : 'approved').all();
@@ -68,6 +82,24 @@ async function route(request, env) {
   if (origin && origin !== url.origin) return json({error:'Ungültiger Ursprung.'},403);
   const data = await readBody(request);
   if (!data) return invalid('Ungültige Anfrage.');
+  if (settings) {
+    if (!teacher) return json({error:'Methode nicht verfügbar.'},405);
+    if (typeof data.open !== 'boolean') return invalid('Ungültiger Status.');
+    const row = await db.prepare('UPDATE comment_settings SET is_open=? WHERE id=1 RETURNING is_open')
+      .bind(Number(data.open)).first();
+    if (!row) return json({error:'Der Status konnte nicht gespeichert werden.'},503);
+    return json({open:row.is_open === 1});
+  }
+  if (path === '/api/likes') {
+    if (!Number.isSafeInteger(data.id) || data.id < 1 || typeof data.voter !== 'string' ||
+        !/^[a-f0-9-]{36}$/.test(data.voter)) return invalid('Ungültiges Like.');
+    const result = await db.prepare(`INSERT OR IGNORE INTO comment_likes(feedback_id,voter)
+      SELECT id,? FROM feedback WHERE id=? AND state='approved'`).bind(data.voter,data.id).run();
+    const row = await db.prepare(`SELECT count(comment_likes.voter) AS likes
+      FROM feedback LEFT JOIN comment_likes ON feedback_id=feedback.id
+      WHERE feedback.id=? AND state='approved' GROUP BY feedback.id`).bind(data.id).first();
+    return row ? json({likes:row.likes}) : json({error:'Kommentar nicht gefunden.'},404);
+  }
   if (teacher) {
     if (!Number.isSafeInteger(data.id) || !['approved','deleted'].includes(data.state)) return invalid('Ungültige Entscheidung.');
     const result = data.state === 'deleted'
@@ -83,8 +115,10 @@ async function route(request, env) {
   const detail = data.detail.trim();
   const error = feedbackError(detail);
   if (error) return json({error},422);
-  await db.prepare('INSERT INTO feedback(initials,talk,prompt,detail) VALUES (?,?,?,?)').bind(initials,data.talk,data.prompt,detail).run();
-  return json({ok:true},201);
+  const result = await db.prepare(`INSERT INTO feedback(initials,talk,prompt,detail)
+    SELECT ?,?,?,? WHERE EXISTS (SELECT 1 FROM comment_settings WHERE id=1 AND is_open=1)`)
+    .bind(initials,data.talk,data.prompt,detail).run();
+  return result.meta.changes ? json({ok:true},201) : json({error:'Die Kommentarfunktion ist geschlossen.',closed:true},409);
 }
 
 export default {

@@ -14,11 +14,19 @@ const digest = value => createHash('sha256').update(value).digest();
 const expected = digest('lehrer:' + password);
 process.umask(0o077);
 const db = new DatabaseSync(process.env.FMA_DB || 'feedback.sqlite');
-db.exec(`CREATE TABLE IF NOT EXISTS feedback (
-  id INTEGER PRIMARY KEY, initials TEXT NOT NULL, talk INTEGER NOT NULL,
-  prompt INTEGER NOT NULL, detail TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending'
-)`);
-const insert = db.prepare('INSERT INTO feedback(initials,talk,prompt,detail) VALUES (?,?,?,?)');
+for (const migration of ['0000_feedback.sql', '0001_comment_controls.sql']) {
+  db.exec(readFileSync(new URL('./drizzle/' + migration, import.meta.url), 'utf8'));
+}
+const insert = db.prepare(
+  'INSERT INTO feedback(initials,talk,prompt,detail) SELECT ?,?,?,? WHERE EXISTS (SELECT 1 FROM comment_settings WHERE id=1 AND is_open=1)'
+);
+const approved = db.prepare(
+  "SELECT id,initials,talk,prompt,detail,(SELECT count(*) FROM comment_likes WHERE feedback_id=feedback.id) AS likes FROM feedback WHERE state='approved' ORDER BY id"
+);
+const readMode = db.prepare('SELECT is_open FROM comment_settings WHERE id=1');
+const setMode = db.prepare('UPDATE comment_settings SET is_open=? WHERE id=1 RETURNING is_open');
+const addLike = db.prepare("INSERT OR IGNORE INTO comment_likes(feedback_id,voter) SELECT id,? FROM feedback WHERE id=? AND state='approved'");
+const likeCount = db.prepare("SELECT count(comment_likes.voter) AS likes FROM feedback LEFT JOIN comment_likes ON feedback_id=feedback.id WHERE feedback.id=? AND state='approved' GROUP BY feedback.id");
 const list = db.prepare('SELECT id,initials,talk,prompt,detail FROM feedback WHERE state=? ORDER BY id');
 const decide = db.prepare("UPDATE feedback SET state=? WHERE id=? AND state='pending'");
 const remove = db.prepare("DELETE FROM feedback WHERE id=? AND state='pending'");
@@ -72,17 +80,34 @@ createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   const path = req.url.split('?')[0];
-  if ((path === '/lehrer' || path === '/api/lehrer') && !authorized(req,res)) return;
+  if (['/lehrer','/api/lehrer','/api/lehrer/kommentare'].includes(path) && !authorized(req,res)) return;
   try {
     if (req.method === 'GET' && assets.has(path)) {
       const [body,type] = assets.get(path);
       return res.writeHead(200,{'Content-Type':type.startsWith('image/') ? type : type+'; charset=utf-8'}).end(body);
     }
-    if (path === '/api/feedback' && req.method === 'GET') return json(res,200,list.all('approved'));
+    if (path === '/api/feedback' && req.method === 'GET') return json(res,200,approved.all());
     if (path === '/api/lehrer' && req.method === 'GET') return json(res,200,list.all('pending'));
-    if (req.method === 'POST' && ['/api/feedback','/api/lehrer'].includes(path)) {
+    if (req.method === 'GET' && ['/api/kommentare','/api/lehrer/kommentare'].includes(path)) {
+      return json(res,200,{open:readMode.get()?.is_open === 1});
+    }
+    if (req.method === 'POST' && ['/api/feedback','/api/lehrer','/api/lehrer/kommentare','/api/likes'].includes(path)) {
+      const origin = req.headers.origin;
+      if (origin && new URL(origin).host !== req.headers.host) return json(res,403,{error:'Ungültiger Ursprung.'});
       const data = await readJson(req);
       if (!data) return json(res,400,{error:'Ungültige Anfrage.'});
+      if (path === '/api/lehrer/kommentare') {
+        if (typeof data.open !== 'boolean') return json(res,400,{error:'Ungültiger Status.'});
+        const row = setMode.get(Number(data.open));
+        return row ? json(res,200,{open:row.is_open === 1}) : json(res,503,{error:'Der Status konnte nicht gespeichert werden.'});
+      }
+      if (path === '/api/likes') {
+        if (!Number.isSafeInteger(data.id) || data.id < 1 || typeof data.voter !== 'string' ||
+            !/^[a-f0-9-]{36}$/.test(data.voter)) return json(res,400,{error:'Ungültiges Like.'});
+        addLike.run(data.voter,data.id);
+        const row = likeCount.get(data.id);
+        return row ? json(res,200,row) : json(res,404,{error:'Kommentar nicht gefunden.'});
+      }
       if (path === '/api/lehrer') {
         if (!Number.isSafeInteger(data.id) || !['approved','deleted'].includes(data.state)) return json(res,400,{error:'Ungültige Entscheidung.'});
         const result = data.state === 'deleted' ? remove.run(data.id) : decide.run('approved',data.id);
@@ -95,8 +120,8 @@ createServer(async (req, res) => {
       const detail = data.detail.trim();
       const error = feedbackError(detail);
       if (error) return json(res,422,{error});
-      insert.run(initials,data.talk,data.prompt,detail);
-      return json(res,201,{ok:true});
+      const result = insert.run(initials,data.talk,data.prompt,detail);
+      return result.changes ? json(res,201,{ok:true}) : json(res,409,{error:'Die Kommentarfunktion ist geschlossen.',closed:true});
     }
     return json(res,404,{error:'Seite nicht gefunden.'});
   } catch (error) {
