@@ -8,7 +8,7 @@ const invalid = error => json({error}, 400);
 const inRange = (value, length) => Number.isInteger(value) && value >= 0 && value < length;
 
 async function isTeacher(request, password) {
-  if (!password || password.length < 16) return false;
+  if (!password) return false;
   const supplied = request.headers.get('Authorization') || '';
   const expected = 'Basic ' + btoa('lehrer:' + password);
   const encoder = new TextEncoder();
