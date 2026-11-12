@@ -20,8 +20,8 @@ label{display:block;font-weight:700;margin-top:1rem}input,select,textarea{font:i
 <label for="talk">Präsentation</label><select id="talk" required disabled><option value="">Zuerst Zeitfenster wählen</option></select><p id="selected" aria-live="polite"></p>
 <label for="prompt">Dein Kommentar</label><select id="prompt" required><option value="">Rückmeldung wählen</option></select>
 <label for="detail">Konkrete Ergänzung (freiwillig)</label>
-<p class="small" id="hint">Beziehe dich auf die Präsentation. Lass Namen und persönliche Angaben weg.</p>
-<textarea id="detail" maxlength="140" aria-describedby="hint count status" placeholder="Zum Beispiel: Die Grafik hat mir geholfen, den Ablauf zu verstehen."></textarea>
+<p class="small" id="hint">Beziehe dich auf die Präsentation. Lass Namen und persönliche Angaben weg. Bei markierten Wörtern findest du Korrekturvorschläge per Rechtsklick oder über die Tastatur deines Geräts.</p>
+<textarea id="detail" maxlength="140" lang="de-CH" spellcheck="true" autocorrect="on" aria-describedby="hint count status" placeholder="Zum Beispiel: Die Grafik hat mir geholfen, den Ablauf zu verstehen."></textarea>
 <p id="count" class="small">0 / 140 Zeichen</p>
 <p class="small">Dein Kommentar wird erst nach Freigabe durch die Lehrperson sichtbar. Beleidigende und destruktive Kommentare werden nicht veröffentlicht.</p>
 <p id="availability" role="status"></p><p id="status" role="status"></p>
