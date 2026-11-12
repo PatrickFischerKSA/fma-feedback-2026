@@ -1,0 +1,5 @@
+auswertung/
+*.sqlite*
+.env
+
+dist/

@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS feedback (
+  id INTEGER PRIMARY KEY,
+  initials TEXT NOT NULL,
+  talk INTEGER NOT NULL,
+  prompt INTEGER NOT NULL,
+  detail TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'pending'
+);

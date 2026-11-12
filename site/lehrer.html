@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="de-CH">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FMA-Feedback · Lehrerbereich</title>
+<style>
+body{margin:0 auto;max-width:50rem;padding:1.5rem;background:#f2f5ed;color:#172d2b;font:1rem/1.5 system-ui}article{background:white;border:1px solid #d5dfd4;border-radius:.7rem;padding:1rem;margin:1rem 0}button{font:inherit;margin-right:.65rem;padding:.5rem .75rem;cursor:pointer}h2{font-size:1.05rem}
+</style>
+<main>
+<a href="/">Zum Feedbackformular</a>
+<h1>Lehrerbereich</h1>
+<p>Freigegebene Kommentare erscheinen bei der jeweiligen Präsentation.</p>
+<button id="refresh">Pool aktualisieren</button>
+<p id="status" role="status"></p>
+<section id="pool" aria-label="Offene Kommentare"></section>
+</main>
+<script type="module">
+import {titles,prompts} from './feedback.mjs';
+const pool = document.querySelector('#pool');
+const status = document.querySelector('#status');
+async function load() {
+  const response = await fetch('/api/lehrer');
+  if (!response.ok) throw new Error('Der Pool konnte nicht geladen werden.');
+  const rows = await response.json();
+  pool.replaceChildren();
+  if (!rows.length) pool.textContent = 'Keine offenen Kommentare.';
+  for (const row of rows) {
+    const card = document.createElement('article');
+    const title = document.createElement('h2');
+    title.textContent = titles[row.talk - 1] + ' · ' + row.initials;
+    const comment = document.createElement('p');
+    comment.textContent = prompts[row.prompt] + ' ' + row.detail;
+    card.append(title,comment);
+    for (const [state,label] of [['approved','Veröffentlichen'],['deleted','Löschen']]) {
+      const button = document.createElement('button');
+      button.textContent = label;
+      button.addEventListener('click',async () => {
+        card.querySelectorAll('button').forEach(control => { control.disabled = true; });
+        try {
+          const response = await fetch('/api/lehrer',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({id:row.id,state})
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error);
+          status.textContent = state === 'approved' ? 'Kommentar veröffentlicht.' : 'Kommentar gelöscht.';
+          await load();
+        } catch (error) {
+          status.textContent = error.message;
+          card.querySelectorAll('button').forEach(control => { control.disabled = false; });
+        }
+      });
+      card.append(button);
+    }
+    pool.append(card);
+  }
+}
+function refresh() {
+  load().catch(error => { status.textContent = error.message; });
+}
+document.querySelector('#refresh').addEventListener('click',refresh);
+refresh();
+</script>
+</html>
