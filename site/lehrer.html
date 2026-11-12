@@ -123,6 +123,9 @@ async function loadPublished() {
     const save = document.createElement('button');
     save.textContent = 'Änderungen speichern';
     form.append(promptLabel,detailLabel,save);
+    import('./spelling/ui.mjs').then(({addSpellingControl}) => {
+      addSpellingControl(detail, detailLabel, () => prompts[Number(prompt.value)]);
+    });
     edit.addEventListener('click', () => {
       form.hidden = !form.hidden;
       if (!form.hidden) prompt.focus();

@@ -19,10 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
       - run: |
+          node spelling/build.mjs
           mkdir public
           cp site/index.html site/feedback.mjs site/broschuere.json public/
-          cp -R site/bilder public/
+          cp -R site/bilder dist/assets/spelling public/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public

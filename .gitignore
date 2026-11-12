@@ -3,3 +3,6 @@ auswertung/
 .env
 
 dist/
+
+node_modules/
+.wrangler/

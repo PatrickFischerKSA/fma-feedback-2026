@@ -4,10 +4,13 @@ compatibility_date = "2026-11-12"
 workers_dev = true
 
 [build]
-command = "node worker/build.mjs"
+command = "node worker/build.mjs && node spelling/build.mjs"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "fma-feedback-2026"
 database_id = "433854fd-ce15-44e5-8f94-95aa14713d06"
 migrations_dir = "drizzle"
+
+[assets]
+directory = "dist/assets"

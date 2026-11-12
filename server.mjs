@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { titles, prompts, feedbackError } from './site/feedback.mjs';
@@ -40,6 +40,11 @@ const assets = new Map([
     return [image, [image.slice(1), 'image/jpeg']];
   })
 ].map(([url,[file,type]]) => [url,[readFileSync(new URL('./site/' + file, import.meta.url)),type]]));
+
+for (const file of ['ui.mjs','check.mjs','index.aff','index.dic','dictionary-license.txt','GPL-2.0.txt','nspell-license.txt','is-buffer-license.txt']) {
+  const url = new URL('./dist/assets/spelling/' + file, import.meta.url);
+  if (existsSync(url)) assets.set('/spelling/' + file,[readFileSync(url),file.endsWith('.mjs') ? 'text/javascript' : 'text/plain']);
+}
 
 let failures = 0;
 let failureWindow = 0;

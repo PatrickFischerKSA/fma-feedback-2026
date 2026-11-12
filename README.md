@@ -6,6 +6,8 @@
 
 Voraussetzung ist Node.js 24.
 
+    npm ci
+    node spelling/build.mjs
     TEACHER_PASSWORD=DEIN_LOKALES_PASSWORT node server.mjs
 
 Öffne http://127.0.0.1:8080. Der Benutzername im Lehrerbereich lautet lehrer. Die SQLite-Datei wird im Startverzeichnis angelegt.
